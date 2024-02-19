@@ -27,13 +27,17 @@ import com.jagrosh.jmusicbot.audio.QueuedTrack;
 import com.jagrosh.jmusicbot.commands.DJCommand;
 import com.jagrosh.jmusicbot.commands.MusicCommand;
 import com.jagrosh.jmusicbot.commands.owner.PlaylistCmd;
+import net.dv8tion.jda.api.entities.MessageEmbed;
+import net.dv8tion.jda.api.interactions.components.Button;
 import com.jagrosh.jmusicbot.playlist.PlaylistLoader.Playlist;
 import com.jagrosh.jmusicbot.utils.FormatUtil;
 import java.util.concurrent.TimeUnit;
+import org.jetbrains.annotations.NotNull;
 import net.dv8tion.jda.api.Permission;
 import net.dv8tion.jda.api.entities.Message;
 import net.dv8tion.jda.api.exceptions.PermissionException;
 import com.jagrosh.jmusicbot.audio.RequestMetadata;
+import net.dv8tion.jda.api.entities.Emoji;
 
 
 /**
@@ -46,6 +50,8 @@ public class PlayCmd extends MusicCommand {
     private final static String SHUFFLE = "\uD83D\uDD00"; // Example shuffle emoji
     private final static String SKIP = "\u23ED"; // Example skip emoji
     private final static String CLEAR = "\uD83D\uDDD1"; // Example clear emoji
+    private final static String CLOWN = "\uD83E\uDD21"; // 🤡
+
 
     private final String loadingEmoji;
 
@@ -101,6 +107,101 @@ public class PlayCmd extends MusicCommand {
         private final CommandEvent event;
         private final boolean ytsearch;
 
+        private void replyWithControls(String message) {
+            String content = message + "/n**Playback Controls" + "**";
+
+            Button shuffleButton =
+                    Button.primary("shuffle", "Shuffle").withEmoji(Emoji.fromUnicode(SHUFFLE));
+            Button skipButton = Button.primary("skip", "Skip").withEmoji(Emoji.fromUnicode(SKIP));
+            Button clearButton =
+                    Button.primary("clear", "Clear").withEmoji(Emoji.fromUnicode(CLEAR));
+
+            // Sending the message with buttons
+            event.getChannel().sendMessage(content)
+                    .setActionRow(shuffleButton, skipButton, clearButton).queue();
+
+            event.getChannel().sendMessage(message + " Playback Controls" + "**").queue(msg -> {
+                new ButtonMenu.Builder().setText("Control playback:")
+                        .setChoices(SHUFFLE, SKIP, CLEAR).setEventWaiter(bot.getWaiter())
+                        .setTimeout(1, TimeUnit.MINUTES).setAction(re -> {
+                            switch (re.getName()) {
+                                case SHUFFLE:
+
+                                    break;
+                                case SKIP:
+
+                                    break;
+                                case CLEAR:
+
+                                    break;
+                            }
+                        }).setFinalAction(m -> {
+                            try {
+                                m.clearReactions().queue();
+                            } catch (PermissionException ignore) {
+                            }
+                        }).build().display(m);
+            });
+        }
+
+        public void onButtonInteraction(@NotNull ButtonInteractionEvent event) {
+            String componentId = event.getComponentId();
+            AudioHandler handler =
+                    (AudioHandler) event.getGuild().getAudioManager().getSendingHandler();
+
+            switch (componentId) {
+                case "shuffle":
+                    int shuffleStatus = handler.getQueue().shuffle(event.getAuthor().getIdLong());
+                    switch (shuffleStatus) {
+                        case 0:
+                            event.replyError("You don't have any music in the queue to shuffle!");
+                            break;
+                        case 1:
+                            event.replyWarning("You only have one song in the queue!");
+                            break;
+                        default:
+                            this.replyWithControls("You successfully shuffled your " + shuffleStatus
+                                    + " entries.");
+                            break;
+                    }
+                    break;
+                case "skip":
+                    if (handler.getPlayer().getPlayingTrack() != null) {
+                        this.replyWithControls(" Skipped **");
+
+                        RequestMetadata rm = handler.getRequestMetadata();
+                        String skipMessage = event.getClient().getSuccess() + " Skipped **"
+                                + handler.getPlayer().getPlayingTrack().getInfo().title + "** "
+                                + (rm.getOwner() == 0L ? "(autoplay)"
+                                        : "(requested by **" + rm.user.username + "**)");
+                        handler.getPlayer().stopTrack();
+                        event.reply(skipMessage);
+                        this.replyWithControls(CLOWN + " Skipped song \n");
+                    } else {
+                        event.replyError("There is no track currently playing to skip.");
+                    }
+                    break;
+                case "clear":
+                    if (handler != null) {
+                        handler.stopAndClear();
+                        event.getGuild().getAudioManager().closeAudioConnection();
+                        event.reply(event.getClient().getSuccess()
+                                + " The player has stopped and the queue has been cleared.");
+                    } else {
+                        event.replyError("There is no active player to stop or clear.");
+                    }
+                    break;
+                default:
+                    event.reply(event.getClient().getSuccess() + " How'd you even get here?");
+                    break;
+            }
+
+            // Always acknowledge the button click to let Discord know it was received
+            event.deferEdit().queue();
+        }
+
+
+
         private ResultHandler(Message m, CommandEvent event, boolean ytsearch) {
             this.m = m;
             this.event = event;
@@ -124,71 +225,7 @@ public class PlayCmd extends MusicCommand {
                     + "`) " + (pos == 0 ? "to begin playing" : " to the queue at position " + pos));
             if (playlist == null || !event.getSelfMember().hasPermission(event.getTextChannel(),
                     Permission.MESSAGE_ADD_REACTION)) {
-                m.editMessage(addMsg).queue(successMessage -> {
-                    new ButtonMenu.Builder().setText("Control playback:")
-                            .setChoices(SHUFFLE, SKIP, CLEAR).setEventWaiter(bot.getWaiter())
-                            .setTimeout(1, TimeUnit.MINUTES).setAction(re -> {
-                                switch (re.getName()) {
-                                    case SHUFFLE:
-                                        int shuffleStatus = handler.getQueue()
-                                                .shuffle(event.getAuthor().getIdLong());
-                                        switch (shuffleStatus) {
-                                            case 0:
-                                                event.replyError(
-                                                        "You don't have any music in the queue to shuffle!");
-                                                break;
-                                            case 1:
-                                                event.replyWarning(
-                                                        "You only have one song in the queue!");
-                                                break;
-                                            default:
-                                                event.replySuccess("You successfully shuffled your "
-                                                        + shuffleStatus + " entries.");
-                                                break;
-                                        }
-                                        break;
-                                    case SKIP:
-                                        if (handler.getPlayer().getPlayingTrack() != null) {
-                                            RequestMetadata rm = handler.getRequestMetadata();
-                                            String skipMessage = event.getClient().getSuccess()
-                                                    + " Skipped **" + handler.getPlayer()
-                                                            .getPlayingTrack().getInfo().title
-                                                    + "** "
-                                                    + (rm.getOwner() == 0L ? "(autoplay)"
-                                                            : "(requested by **" + rm.user.username
-                                                                    + "**)"); // Ensure
-                                                                              // rm.user.username is
-                                                                              // correctly accessed
-                                            handler.getPlayer().stopTrack();
-                                            event.reply(skipMessage);
-                                        } else {
-                                            event.replyError(
-                                                    "There is no track currently playing to skip.");
-                                        }
-                                        break;
-                                    case CLEAR:
-                                        if (handler != null) {
-                                            handler.stopAndClear(); // Stops the player and clears
-                                                                    // the queue
-                                            event.getGuild().getAudioManager()
-                                                    .closeAudioConnection(); // Closes the audio
-                                                                             // connection to the
-                                                                             // voice channel
-                                            event.reply(event.getClient().getSuccess()
-                                                    + " The player has stopped and the queue has been cleared.");
-                                        } else {
-                                            event.replyError(
-                                                    "There is no active player to stop or clear.");
-                                        }
-                                        break;
-                                }
-                            }).setFinalAction(m -> {
-                                try {
-                                    m.clearReactions().queue();
-                                } catch (PermissionException ignore) {
-                                }
-                            }).build().display(m);
-                });
+                this.replyWithControls(addMsg);
             } else {
                 new ButtonMenu.Builder()
                         .setText(addMsg + "\n" + event.getClient().getWarning()
@@ -231,8 +268,8 @@ public class PlayCmd extends MusicCommand {
 
         @Override
         public void playlistLoaded(AudioPlaylist playlist) {
-            AudioHandler handler =
-                    (AudioHandler) event.getGuild().getAudioManager().getSendingHandler();
+            String message = "";
+
             if (playlist.getTracks().size() == 1 || playlist.isSearchResult()) {
                 AudioTrack single =
                         playlist.getSelectedTrack() == null ? playlist.getTracks().get(0)
@@ -240,7 +277,6 @@ public class PlayCmd extends MusicCommand {
                 loadSingle(single, null);
             } else {
                 int count = loadPlaylist(playlist, null);
-                String message;
                 if (playlist.getTracks().size() == 0) {
                     message = FormatUtil.filter(event.getClient().getWarning() + " The playlist "
                             + (playlist.getName() == null ? ""
@@ -266,72 +302,6 @@ public class PlayCmd extends MusicCommand {
                                     : ""));
                 }
 
-                // Edit the message to include the button menu for controls
-                m.editMessage(message).queue(successMessage -> {
-                    new ButtonMenu.Builder().setText("Control playback:")
-                            .setChoices(SHUFFLE, SKIP, CLEAR).setEventWaiter(bot.getWaiter())
-                            .setTimeout(1, TimeUnit.MINUTES).setAction(re -> {
-                                switch (re.getName()) {
-                                    case SHUFFLE:
-                                        int shuffleStatus = handler.getQueue()
-                                                .shuffle(event.getAuthor().getIdLong());
-                                        switch (shuffleStatus) {
-                                            case 0:
-                                                event.replyError(
-                                                        "You don't have any music in the queue to shuffle!");
-                                                break;
-                                            case 1:
-                                                event.replyWarning(
-                                                        "You only have one song in the queue!");
-                                                break;
-                                            default:
-                                                event.replySuccess("You successfully shuffled your "
-                                                        + shuffleStatus + " entries.");
-                                                break;
-                                        }
-                                        break;
-                                    case SKIP:
-                                        if (handler.getPlayer().getPlayingTrack() != null) {
-                                            RequestMetadata rm = handler.getRequestMetadata();
-                                            String skipMessage = event.getClient().getSuccess()
-                                                    + " Skipped **" + handler.getPlayer()
-                                                            .getPlayingTrack().getInfo().title
-                                                    + "** "
-                                                    + (rm.getOwner() == 0L ? "(autoplay)"
-                                                            : "(requested by **" + rm.user.username
-                                                                    + "**)"); // Ensure
-                                                                              // rm.user.username is
-                                                                              // correctly accessed
-                                            handler.getPlayer().stopTrack();
-                                            event.reply(skipMessage);
-                                        } else {
-                                            event.replyError(
-                                                    "There is no track currently playing to skip.");
-                                        }
-                                        break;
-                                    case CLEAR:
-                                        if (handler != null) {
-                                            handler.stopAndClear(); // Stops the player and clears
-                                                                    // the queue
-                                            event.getGuild().getAudioManager()
-                                                    .closeAudioConnection(); // Closes the audio
-                                                                             // connection to the
-                                                                             // voice channel
-                                            event.reply(event.getClient().getSuccess()
-                                                    + " The player has stopped and the queue has been cleared.");
-                                        } else {
-                                            event.replyError(
-                                                    "There is no active player to stop or clear.");
-                                        }
-                                        break;
-                                }
-                            }).setFinalAction(m -> {
-                                try {
-                                    m.clearReactions().queue();
-                                } catch (PermissionException ignore) {
-                                }
-                            }).build().display(successMessage);
-                });
             }
 
             if (playlist.getTracks().size() == 1 || playlist.isSearchResult()) {
@@ -373,6 +343,8 @@ public class PlayCmd extends MusicCommand {
                             .queue();
                 }
             }
+
+            this.replyWithControls(message);
         }
 
         @Override
