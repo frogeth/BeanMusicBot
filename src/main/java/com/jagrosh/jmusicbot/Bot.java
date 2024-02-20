@@ -1,17 +1,15 @@
 /*
  * Copyright 2018 John Grosh <john.a.grosh@gmail.com>.
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
+ * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
+ * in compliance with the License. You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ * http://www.apache.org/licenses/LICENSE-2.0
  *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
+ * Unless required by applicable law or agreed to in writing, software distributed under the License
+ * is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express
+ * or implied. See the License for the specific language governing permissions and limitations under
+ * the License.
  */
 package com.jagrosh.jmusicbot;
 
@@ -25,17 +23,20 @@ import com.jagrosh.jmusicbot.audio.PlayerManager;
 import com.jagrosh.jmusicbot.gui.GUI;
 import com.jagrosh.jmusicbot.playlist.PlaylistLoader;
 import com.jagrosh.jmusicbot.settings.SettingsManager;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.Objects;
 import net.dv8tion.jda.api.JDA;
 import net.dv8tion.jda.api.entities.Activity;
 import net.dv8tion.jda.api.entities.Guild;
+import java.util.concurrent.ConcurrentHashMap;
+
 
 /**
  *
  * @author John Grosh <john.a.grosh@gmail.com>
  */
-public class Bot
-{
+public class Bot {
     private final EventWaiter waiter;
     private final ScheduledExecutorService threadpool;
     private final BotConfig config;
@@ -44,13 +45,12 @@ public class Bot
     private final PlaylistLoader playlists;
     private final NowplayingHandler nowplaying;
     private final AloneInVoiceHandler aloneInVoiceHandler;
-    
+
     private boolean shuttingDown = false;
     private JDA jda;
     private GUI gui;
-    
-    public Bot(EventWaiter waiter, BotConfig config, SettingsManager settings)
-    {
+
+    public Bot(EventWaiter waiter, BotConfig config, SettingsManager settings) {
         this.waiter = waiter;
         this.config = config;
         this.settings = settings;
@@ -63,80 +63,79 @@ public class Bot
         this.aloneInVoiceHandler = new AloneInVoiceHandler(this);
         this.aloneInVoiceHandler.init();
     }
-    
-    public BotConfig getConfig()
-    {
+
+    public Map<Long, Long> lastControlsMessageIdPerChannel = new ConcurrentHashMap<>();
+
+    public synchronized void setLastControlsMessage(Long channelId, Long messageId) {
+        lastControlsMessageIdPerChannel.put(channelId, messageId);
+    }
+
+    public Long getLastControlsMessage(Long channelId) {
+        return lastControlsMessageIdPerChannel.getOrDefault(channelId, null);
+    }
+
+
+    public BotConfig getConfig() {
         return config;
     }
-    
-    public SettingsManager getSettingsManager()
-    {
+
+    public SettingsManager getSettingsManager() {
         return settings;
     }
-    
-    public EventWaiter getWaiter()
-    {
+
+    public EventWaiter getWaiter() {
         return waiter;
     }
-    
-    public ScheduledExecutorService getThreadpool()
-    {
+
+    public ScheduledExecutorService getThreadpool() {
         return threadpool;
     }
-    
-    public PlayerManager getPlayerManager()
-    {
+
+    public PlayerManager getPlayerManager() {
         return players;
     }
-    
-    public PlaylistLoader getPlaylistLoader()
-    {
+
+    public PlaylistLoader getPlaylistLoader() {
         return playlists;
     }
-    
-    public NowplayingHandler getNowplayingHandler()
-    {
+
+    public NowplayingHandler getNowplayingHandler() {
         return nowplaying;
     }
 
-    public AloneInVoiceHandler getAloneInVoiceHandler()
-    {
+    public AloneInVoiceHandler getAloneInVoiceHandler() {
         return aloneInVoiceHandler;
     }
-    
-    public JDA getJDA()
-    {
+
+    public JDA getJDA() {
         return jda;
     }
-    
-    public void closeAudioConnection(long guildId)
-    {
+
+    public void closeAudioConnection(long guildId) {
         Guild guild = jda.getGuildById(guildId);
-        if(guild!=null)
+        if (guild != null)
             threadpool.submit(() -> guild.getAudioManager().closeAudioConnection());
     }
-    
-    public void resetGame()
-    {
-        Activity game = config.getGame()==null || config.getGame().getName().equalsIgnoreCase("none") ? null : config.getGame();
-        if(!Objects.equals(jda.getPresence().getActivity(), game))
+
+    public void resetGame() {
+        Activity game =
+                config.getGame() == null || config.getGame().getName().equalsIgnoreCase("none")
+                        ? null
+                        : config.getGame();
+        if (!Objects.equals(jda.getPresence().getActivity(), game))
             jda.getPresence().setActivity(game);
     }
 
-    public void shutdown()
-    {
-        if(shuttingDown)
+    public void shutdown() {
+        if (shuttingDown)
             return;
         shuttingDown = true;
         threadpool.shutdownNow();
-        if(jda.getStatus()!=JDA.Status.SHUTTING_DOWN)
-        {
-            jda.getGuilds().stream().forEach(g -> 
-            {
+        if (jda.getStatus() != JDA.Status.SHUTTING_DOWN) {
+            jda.getGuilds().stream().forEach(g -> {
                 g.getAudioManager().closeAudioConnection();
-                AudioHandler ah = (AudioHandler)g.getAudioManager().getSendingHandler();
-                if(ah!=null)
-                {
+                AudioHandler ah = (AudioHandler) g.getAudioManager().getSendingHandler();
+                if (ah != null) {
                     ah.stopAndClear();
                     ah.getPlayer().destroy();
                     nowplaying.updateTopic(g.getIdLong(), ah, true);
@@ -144,18 +143,16 @@ public class Bot
             });
             jda.shutdown();
         }
-        if(gui!=null)
+        if (gui != null)
             gui.dispose();
         System.exit(0);
     }
 
-    public void setJDA(JDA jda)
-    {
+    public void setJDA(JDA jda) {
         this.jda = jda;
     }
-    
-    public void setGUI(GUI gui)
-    {
+
+    public void setGUI(GUI gui) {
         this.gui = gui;
     }
 }
